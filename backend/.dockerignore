@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.venv/
+tests/
+data/
+docs/
+../data
+../docs
+../.venv
+../frontend

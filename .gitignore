@@ -1,0 +1,15 @@
+# Python
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime data (videos, uploads, artifacts, SQLite)
+data/
+!data/videos_demo/README.md
+
+# OS / editor
+Thumbs.db
+.DS_Store
+.idea/
+.vscode/
