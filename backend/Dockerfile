@@ -20,6 +20,9 @@ RUN pip install --no-cache-dir --quiet torch \
 
 COPY backend/app ./app
 
+# Fail the build fast if any import is broken (e.g. cv2/libGL, torch, app).
+RUN python -c "import cv2, torch; from app.main import app; print('imports ok')"
+
 VOLUME ["/data"]
 EXPOSE 8000
 
