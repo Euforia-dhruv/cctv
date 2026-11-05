@@ -71,7 +71,9 @@ def main():
     assert st == 200, video
     print("uploaded:", video["filename"], video["duration_s"], "s")
 
-    st, job = req(f"/api/videos/{video['id']}/analyze", "POST", {}, token)
+    # Optional 3rd arg: JSON job options, e.g. '{"tile_grid":3,"sample_step":6}'
+    opts = json.loads(sys.argv[3]) if len(sys.argv) > 3 else {}
+    st, job = req(f"/api/videos/{video['id']}/analyze", "POST", opts, token)
     assert st == 200, job
     jid = job["id"]
     print("job", jid, "queued")

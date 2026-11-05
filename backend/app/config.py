@@ -41,6 +41,12 @@ DEFAULTS = {
     "congestion_min_duration_s": 30.0,
     "detector_heatmap_cells": (36, 22),
     "artifact_thumb_scale": 0.5,
+    # Small-object mode: split a single-view frame into an NxN grid of overlapping
+    # tiles and detect on each. Needed when people are tiny (wide/high viewpoints,
+    # low-res sources), where whole-frame detection misses most of them.
+    # 0 or 1 = off. 3 costs about 4x a whole-frame pass.
+    "tile_grid": 0,
+    "tile_overlap": 0.15,
 }
 
 MODEL_REGISTRY = {
@@ -60,7 +66,8 @@ def get_model_meta(model_id: str) -> dict:
 def job_config_from_request(body: dict | None) -> dict:
     cfg = defaults()
     if body:
-        for k in ("model", "conf", "imgsz", "sample_step", "device"):
+        for k in ("model", "conf", "imgsz", "sample_step", "device",
+                  "tile_grid", "tile_overlap"):
             if k in body and body[k] is not None:
                 cfg[k] = body[k]
     return cfg

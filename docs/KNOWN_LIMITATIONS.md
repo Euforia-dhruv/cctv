@@ -11,6 +11,16 @@ We prefer honest limits over implied capabilities.
 - Dwell time is approximate (tracked time in view; includes waits).
 - Queue and congestion flags are heuristics with confidence labels, not
   guaranteed measurements. They can be wrong.
+- **Small people are the binding constraint.** The detector needs a person to be
+  a reasonable fraction of its input. On a wide, elevated view (a 640x360 mall
+  atrium, people ~40px tall) a whole-frame pass found 3 people in a visibly
+  crowded scene. The pipeline now measures detected person height on a few
+  frames and switches to overlapping 3x3 tiles when people are too small, which
+  found 33 people on the same frame. This is automatic; the chosen grid and the
+  measured person height are recorded in the analysis result.
+- Tiling costs roughly 4x a whole-frame pass. On this laptop a one-hour 640x360
+  recording takes tens of minutes. Long recordings are the expensive case, not
+  the model.
 
 ## Camera walls (multi-camera mosaic footage)
 

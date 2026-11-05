@@ -137,6 +137,58 @@ def detect_mosaic_multiframe(frames: List[np.ndarray]) -> Optional[dict]:
             "score": first.get("score", 0.0)}
 
 
+def sliding_tiles(frame: np.ndarray, n: int,
+                  overlap: float = 0.15) -> List[Tuple[np.ndarray, Tuple[int, int, int, int]]]:
+    """NxN overlapping crops for small-object detection on a single view.
+
+    Returns (crop, (x0, y0, w, h)) pairs, upscaled so a distant person reaches a
+    size the detector can see. Overlap stops a person on a seam being cut in two."""
+    h, w = frame.shape[:2]
+    tw, th = int(w / n), int(h / n)
+    ox, oy = int(tw * overlap), int(th * overlap)
+    out = []
+    for r in range(n):
+        for c in range(n):
+            x0 = max(0, c * tw - ox)
+            y0 = max(0, r * th - oy)
+            x1 = min(w, x0 + tw + 2 * ox)
+            y1 = min(h, y0 + th + 2 * oy)
+            crop = frame[y0:y1, x0:x1]
+            if crop.size == 0:
+                continue
+            up = cv2.resize(crop, (crop.shape[1] * TILE_UPSCALE,
+                                   crop.shape[0] * TILE_UPSCALE),
+                            interpolation=cv2.INTER_CUBIC)
+            out.append((up, (x0, y0, x1 - x0, y1 - y0)))
+    return out
+
+
+def merge_boxes(boxes: List[Tuple[float, float, float, float, float]],
+                iou_thresh: float = 0.55) -> List[Tuple[float, float, float, float, float]]:
+    """Drop duplicates produced where overlapping tiles both saw the same person.
+
+    Keeps the highest-confidence box. NMS by IoU is enough here because the boxes
+    being merged come from the same detector on the same pixels."""
+    kept: List[Tuple[float, float, float, float, float]] = []
+    for box in sorted(boxes, key=lambda b: b[4], reverse=True):
+        if all(_iou(box, k) <= iou_thresh for k in kept):
+            kept.append(box)
+    return kept
+
+
+def _iou(a, b) -> float:
+    x1, y1 = max(a[0], b[0]), max(a[1], b[1])
+    x2, y2 = min(a[2], b[2]), min(a[3], b[3])
+    iw, ih = max(0.0, x2 - x1), max(0.0, y2 - y1)
+    inter = iw * ih
+    if inter <= 0:
+        return 0.0
+    area_a = max(0.0, a[2] - a[0]) * max(0.0, a[3] - a[1])
+    area_b = max(0.0, b[2] - b[0]) * max(0.0, b[3] - b[1])
+    union = area_a + area_b - inter
+    return inter / union if union > 0 else 0.0
+
+
 def tile_starts(spec: dict) -> List[Tuple[int, int, int, int]]:
     """(x0, y0, w, h) for every cell, inset to skip separator lines."""
     xs, ys = spec["xs"], spec["ys"]

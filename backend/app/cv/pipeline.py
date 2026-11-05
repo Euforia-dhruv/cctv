@@ -3,6 +3,7 @@
 One video at a time. All heavy work happens here in the worker thread."""
 from __future__ import annotations
 
+import math
 from pathlib import Path
 from typing import Callable, List
 
@@ -76,6 +77,25 @@ def run_pipeline(video_path: str, cfg: dict, artifacts_dir: Path,
         if needed > max_frames:
             step = max(step, -(-n_frames // max_frames))
     grid_cfg = grid_probe
+    tile_n = int(cfg.get("tile_grid") or 0)
+    tile_overlap = float(cfg.get("tile_overlap") or 0.15)
+    if grid_cfg:
+        tile_n = 0  # a wall already splits per camera
+    elif tile_n <= 1:
+        # Nothing configured: decide from how big people actually are in this
+        # footage. A wide elevated view makes people a few dozen pixels tall,
+        # which the detector misses; overlapping tiles fix it. Cheap to check.
+        auto = _auto_tile_grid(detector, cap, n_frames, fps, step, width, height)
+        person_px = getattr(_auto_tile_grid, "last_person_px", None)
+        if person_px:
+            res.scene["person_height_px"] = person_px
+        if auto > 1:
+            tile_n = auto
+            res.scene["auto_tile_grid"] = auto
+            res.scene["auto_tile_reason"] = (
+                f"people measure about {res.scene.get('person_height_px')}px tall "
+                f"in the full frame, below the detector's reliable size; "
+                f"analysed in {auto}x{auto} overlapping tiles instead")
 
     occupancy: List[tuple] = []
     reference = None
@@ -116,6 +136,15 @@ def run_pipeline(video_path: str, cfg: dict, artifacts_dir: Path,
             # One tracking step for the whole wall, so no camera's tracks are
             # expired just because a different camera was processed.
             tracker.update_multi(by_cell, t)
+        elif tile_n > 1:
+            # Small-object mode: overlapping tiles, then merge duplicate boxes.
+            crops = mosaic.sliding_tiles(frame, tile_n, tile_overlap)
+            per_tile = detector.detect_many([c for c, _ in crops])
+            raw = []
+            for (_, (x0, y0, _, _)), td in zip(crops, per_tile):
+                raw.extend(mosaic.map_to_frame(td, (x0, y0, 0, 0)))
+            dets = mosaic.merge_boxes(raw)
+            tracker.update(dets, t)
         else:
             dets = detector.detect(frame)
             tracker.update(dets, t)
@@ -135,6 +164,9 @@ def run_pipeline(video_path: str, cfg: dict, artifacts_dir: Path,
     res.scene.update(measure_motion(cap, n_frames, grid))
     res.scene["sample_step"] = step
     res.scene["sample_interval_s"] = round(step / fps, 2) if fps else None
+    if tile_n > 1:
+        res.scene["tile_grid"] = tile_n
+        res.scene["tile_overlap"] = tile_overlap
 
     cap.release()
     res.processed_frames = analyzed
@@ -325,6 +357,56 @@ def _sample_frames(cap, n_frames: int, fps: float, step: int, count: int = 5) ->
         if ok:
             frames.append(f)
     return frames
+
+
+def _auto_tile_grid(detector, cap, n_frames: int, fps: float, step: int,
+                    width: int, height: int) -> int:
+    """Pick a tile grid from the measured height of detected people.
+
+    A person must be roughly MIN_PERSON_FRAC of the detector's input to be
+    found reliably. On a 640x360 elevated mall view people are ~40px, i.e. 6%
+    of frame height, and a whole-frame pass finds a handful of a visible crowd.
+    Tiling restores their working size at a fraction of the cost of a huge imgsz.
+    """
+    if not n_frames:
+        return 0
+    frames = _sample_frames(cap, n_frames, fps, step, count=3)
+    cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+    heights = []
+    for f in frames:
+        for x1, y1, x2, y2, _c in detector.detect(f):
+            h = y2 - y1
+            # ignore absurd detections (a whole-frame "person" is a false box)
+            if 8 <= h <= height * 0.9:
+                heights.append(h)
+    if not heights:
+        return 0
+    heights.sort()
+    med = heights[len(heights) // 2]
+    _auto_tile_grid.last_person_px = med
+    return _grid_for_person_height(med, height)
+
+
+MIN_PERSON_FRAC = 0.33   # of the detector input side; below this, tiling pays
+
+
+def _grid_for_person_height(person_px: float, frame_h: int) -> int:
+    """Smallest NxN tile grid that brings a person back to working size.
+
+    Calibrated on this project's footage (640x360 elevated mall view, people
+    ~40px): 2x2 tiles still found 19-26 of a visible 50+, 3x3 found 40-50.
+    So the working size is about a third of the detector input.
+    """
+    if person_px <= 0 or frame_h <= 0:
+        return 0
+    frac = person_px / frame_h
+    if frac >= MIN_PERSON_FRAC:
+        return 0
+    need = math.ceil(MIN_PERSON_FRAC / frac)
+    for n in (2, 3, 4):
+        if n >= need:
+            return n
+    return 4
 
 
 def _track_row(t) -> dict:
