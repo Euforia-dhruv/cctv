@@ -114,11 +114,20 @@ def run_pipeline(video_path: str, cfg: dict, artifacts_dir: Path,
         if not ok:
             break
         t = frame_idx / fps
-        if reference is None:
+        # Recordings often fade in from black, so a frame can be "usable" and
+        # still be mid-fade. Keep the brightest of the opening frames.
+        if _usable_frame(frame) and (
+                reference is None
+                or (analyzed < 20 and float(frame.mean()) > _brightness(reference) * 1.5)):
+            if reference is None:
+                res.reference_path = str(artifacts_dir / "reference.jpg")
+            elif analyzed >= 1:
+                res.scene["reference_replaced_after_fade"] = True
             reference = frame.copy()
             save_reference(reference, artifacts_dir / "reference.jpg")
-            res.reference_path = str(artifacts_dir / "reference.jpg")
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
+        elif reference is None:
+            res.scene["skipped_blank_lead_in"] = True
 
         # Scene-suitability: camera pan/shake is measured separately on a
         # consecutive-frame burst (see measure_motion), not on sampled frames.
@@ -227,8 +236,13 @@ def run_pipeline(video_path: str, cfg: dict, artifacts_dir: Path,
         # Keep roughly the same detail per camera instead of per frame.
         hm_ch *= grid["cols"]
         hm_cw *= grid["rows"]
-    build_heatmap(tracks, cv2.imread(str(artifacts_dir / "reference.jpg")),
-                  hm, cells=(hm_ch, hm_cw), grid_spec=grid)
+    base = cv2.imread(str(artifacts_dir / "reference.jpg"))
+    if base is None or not _usable_frame(base):
+        # Last resort: a neutral grey background beats a black one, and the
+        # heat is still real data.
+        base = np.full((height, width, 3), 40, np.uint8)
+        res.scene.setdefault("heatmap_no_usable_frame", True)
+    build_heatmap(tracks, base, hm, cells=(hm_ch, hm_cw), grid_spec=grid)
     res.heatmap_path = str(hm)
 
     # Analytics.
@@ -418,6 +432,19 @@ def _grid_for_person_height(person_px: float, frame_h: int) -> int:
         if n >= need:
             return n
     return 4
+
+
+def _brightness(frame) -> float:
+    return float(frame.mean()) if frame is not None else 0.0
+
+
+def _usable_frame(frame) -> bool:
+    """Reject a black or near-black frame (recordings often start with a fade).
+
+    Measured on the long-form mall clip: the first ~2 seconds decode to pure
+    black, so taking the reference from frame 0 produced a black heatmap
+    background even though every other artifact was correct."""
+    return frame is not None and float(frame.mean()) > 12.0
 
 
 def _track_row(t) -> dict:
