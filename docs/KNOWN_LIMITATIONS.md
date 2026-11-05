@@ -36,6 +36,16 @@ We prefer honest limits over implied capabilities.
 - These events were always labelled experimental and for human review; they
   should never be shown to an operator as findings on a busy floor.
 
+## Video decode quirks
+
+- Recordings commonly open with black or a fade-in. The reference frame and
+  heatmap background are taken from the brightest of the opening frames, so a
+  fade does not produce a black heatmap. If a recording is black throughout,
+  nothing can be analysed and the analysis reports that instead of inventing
+  content.
+- Long files are decoded by seeking. Some MP4s seek imprecisely, which can shift
+  sampled timestamps slightly. Counts are unaffected at the minute scale.
+
 ## Camera walls (multi-camera mosaic footage)
 
 Some uploads are not one camera but a grid of cameras in a single video (e.g. a
