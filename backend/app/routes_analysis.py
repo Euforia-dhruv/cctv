@@ -37,12 +37,15 @@ def analysis_summary(analysis_id: int, user: dict = Depends(require_user)):
     video = db.q1("SELECT v.*, s.name AS store_name FROM videos v JOIN stores s ON s.id=v.store_id WHERE v.id=?", (a["video_id"],))
     job = db.q1("SELECT id, model_id, config_json, status FROM jobs WHERE id=?", (a["job_id"],))
     events = db.q("SELECT id, type, subtype, label, ts_s, confidence, status, thumb_path FROM events WHERE analysis_id=? ORDER BY ts_s", (analysis_id,))
+    scene = utils.loads(a["scene_json"], {})
     return {
         "analysis": {
             **a,
             "busy_periods": utils.loads(a["busy_periods_json"], []),
             "traffic_series": utils.loads(a["traffic_series_json"], []),
-            "scene": utils.loads(a["scene_json"], {}),
+            "scene": scene,
+            # camera-wall breakdown (empty for a single-camera clip)
+            "per_camera": scene.get("per_camera", []),
             "zone_exposure": {},
         },
         "video": video,

@@ -53,6 +53,11 @@
 - Detector adapter isolates inference; swapping YOLO26n -> YOLOv8n -> ONNX -> hosted API changes one file.
 - Tracking is our own IoU tracker (license-clean, no ReID). IDs are per-analysis anonymous numbers.
 - Events are neutral, human-reviewable; thumbnails stored locally.
+- **Scene layout is detected, never assumed.** `cv/mosaic.py` scores candidate
+  grids by separator-line coverage; a wall must pass in most sampled frames.
+  A wall is then analysed per camera tile (batched inference), with tracking,
+  queue clustering and heatmap normalisation kept per camera. Failing this check
+  means ordinary single-view processing, so a normal clip costs nothing extra.
 
 ## 4. Database schema overview
 
@@ -61,10 +66,12 @@ Users, Sessions, Stores, Cameras, Videos, Jobs, Analyses, Tracks, Events, Feedba
 ## 5. Data flow for one analysis
 
 1. POST /api/videos/{id}/analyze -> creates job, enqueues.
-2. Worker: probe video -> open capture -> loop sampled frames:
-   detect (YOLO) -> track (IoU) -> occupancy tally -> alert engine.
-3. Finalize tracks -> compute analytics -> render heatmap -> thumbnails for events.
-4. Persist analyses/tracks/events/model_meta -> notify users.
+2. Worker: probe video -> detect scene layout (single view or camera wall).
+3. If wall: split into tiles -> batch-detect all cameras per sampled frame ->
+   associate tracks per camera. Else: detect and track on the whole frame.
+4. Finalize tracks -> compute analytics -> per-camera visit counts on a wall ->
+   render heatmap (camera cells outlined) -> thumbnails for events.
+5. Persist analyses/tracks/events/model_meta -> notify users.
 
 ## 6. Future hosted API architecture (design only)
 

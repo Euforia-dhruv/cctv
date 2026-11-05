@@ -39,23 +39,26 @@ class Detector:
         self._model = YOLO(self.model_id)
 
     def detect(self, frame: np.ndarray) -> List[Det]:
+        return self.detect_many([frame])[0]
+
+    def detect_many(self, frames: list) -> List[List[Det]]:
+        """Batch inference. Returns one detection list per input frame, in order."""
         with self._lock:
             self._load()
             results = self._model.predict(
-                source=frame, conf=self.conf, imgsz=self.imgsz,
+                source=list(frames), conf=self.conf, imgsz=self.imgsz,
                 device=self.device, classes=[0], verbose=False,
             )
-        dets: List[Det] = []
-        if not results:
-            return dets
-        box = results[0].boxes
-        if box is None or len(box) == 0:
-            return dets
-        xyxy = box.xyxy.cpu().numpy()
-        confs = box.conf.cpu().numpy()
-        for (x1, y1, x2, y2), c in zip(xyxy, confs):
-            dets.append((float(x1), float(y1), float(x2), float(y2), float(c)))
-        return dets
+        out: List[List[Det]] = []
+        for r in results:
+            dets: List[Det] = []
+            box = r.boxes
+            if box is not None and len(box) > 0:
+                for (x1, y1, x2, y2), c in zip(box.xyxy.cpu().numpy(),
+                                               box.conf.cpu().numpy()):
+                    dets.append((float(x1), float(y1), float(x2), float(y2), float(c)))
+            out.append(dets)
+        return out
 
     def meta(self) -> dict:
         m = config.get_model_meta(self.model_id)

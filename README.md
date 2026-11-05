@@ -38,3 +38,8 @@ docs/               research, PRD, architecture, setup, demo guide, limitations,
 - No facial recognition, no biometrics, anonymous IDs, human review for observations.
 - Visit counts are estimates within camera limits; queue/debris flags are experimental.
 - Demo clips are free-license stock footage, not real store recordings.
+- **Camera walls are supported.** If an upload is a grid of cameras in one frame
+  (a DVR-style mosaic, e.g. 4x4), the layout is detected from the video and
+  analysis runs per camera. Visit counts stay per camera; they are never summed
+  into a cross-camera "unique people" figure, and cross-camera re-identification
+  is not implemented. See `docs/KNOWN_LIMITATIONS.md`.

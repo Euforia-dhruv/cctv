@@ -63,6 +63,12 @@ class JobRunner:
 
     def _persist(self, job_id: int, video_id: int, res, cfg: dict):
         s = res.summary
+        scene = dict(res.scene)
+        if s.get("per_camera"):
+            # kept inside the scene blob so no new column is needed
+            scene["per_camera"] = s["per_camera"]
+        if s.get("track_quality"):
+            scene["track_quality"] = s["track_quality"]
         analysis_id = db.exec("""INSERT INTO analyses(job_id, video_id, total_detections,
             unique_visits_est, entries_est, exits_est, avg_occupancy, max_occupancy,
             dwell_avg_s, dwell_p50_s, busy_periods_json, traffic_series_json,
@@ -75,14 +81,16 @@ class JobRunner:
              s["traffic_series_json"], res.heatmap_path, res.reference_path,
              res.detected_frames, res.processed_frames, res.inference_device,
              res.inference_ms_avg, cfg["model"], get_model_meta(cfg["model"])["version"],
-             utils.dumps(res.scene)))
+             utils.dumps(scene)))
 
         db.execmany("""INSERT INTO tracks(analysis_id, track_id, first_seen_s, last_seen_s,
-            dwell_s, avg_x, avg_y, min_x, min_y, max_x, max_y, path_json, stationary_ratio, flagged)
-            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
+            dwell_s, avg_x, avg_y, min_x, min_y, max_x, max_y, path_json, stationary_ratio,
+            cell, flagged)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,0)""",
             [(analysis_id, t["track_id"], t["first_seen_s"], t["last_seen_s"],
               t["dwell_s"], t["avg_x"], t["avg_y"], t["min_x"], t["min_y"],
-              t["max_x"], t["max_y"], utils.dumps(t["path_json"]), t["stationary_ratio"])
+              t["max_x"], t["max_y"], utils.dumps(t["path_json"]), t["stationary_ratio"],
+              t.get("cell"))
              for t in res.tracks])
 
         db.execmany("""INSERT INTO events(analysis_id, video_id, type, subtype, label,

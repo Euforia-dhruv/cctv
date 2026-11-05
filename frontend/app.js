@@ -534,6 +534,23 @@ async function analysisView(view, id) {
       ? el("div", { class: "alert info", style: "margin-bottom:14px" },
           "Heads up: camera motion detected in this footage, so counts and tracking may be unreliable.")
       : null),
+    (a.scene && a.scene.mosaic
+      ? el("div", { class: "alert info", style: "margin-bottom:14px" },
+          `Camera wall detected: ${a.scene.mosaic.rows}x${a.scene.mosaic.cols} grid ` +
+          `(${a.scene.mosaic.cameras} cameras, each about ` +
+          `${Math.round((v.width || 640) / a.scene.mosaic.cols)}x` +
+          `${Math.round((v.height || 360) / a.scene.mosaic.rows)}px in this recording). ` +
+          `Analysis ran per camera; a person moving between cameras cannot be re-identified, ` +
+          `so visit counts are per camera and never summed across them.` +
+          (a.scene.sample_interval_s ? ` Sampled every ${a.scene.sample_interval_s}s.` : ""))
+      : null),
+    (a.scene && a.scene.track_quality && a.scene.track_quality.short_track_ratio > 0.35
+      ? el("div", { class: "alert warn", style: "margin-bottom:14px" },
+          `Data quality note: ${Math.round(a.scene.track_quality.short_track_ratio * 100)}% of ` +
+          `tracks were shorter than a few samples, so visit counts are inflated. ` +
+          `Read them as relative activity per camera, not as a headcount. ` +
+          `Re-run with a smaller sampling interval for tighter tracks.`)
+      : null),
     el("div", { class: "stat-grid", style: "margin-bottom:16px" },
       stateBox("People observed (detections)", a.total_detections.toLocaleString(), "sum of sampled frames"),
       stateBox("Unique visits (est.)", a.unique_visits_est ?? "–", "tracked persons, within camera limits"),
@@ -541,6 +558,14 @@ async function analysisView(view, id) {
       stateBox("Peak occupancy", a.max_occupancy, "simultaneous people"),
       stateBox("Avg dwell", fmtDur(a.dwell_avg_s), "per observed person"),
       stateBox("Dwell median", fmtDur(a.dwell_p50_s), "per observed person")),
+    (a.per_camera && a.per_camera.length
+      ? el("div", { class: "card", style: "margin-bottom:16px" },
+          cardHead("Per-camera visits", "each tile treated as a separate scene"),
+          el("div", { class: "stat-grid", style: "grid-template-columns:repeat(8,1fr);padding:14px" },
+            ...a.per_camera.map((c) => el("div", {},
+              el("div", { class: "hint", style: "font-size:11px" }, c.camera),
+              el("div", { style: "font-size:16px;font-weight:600" }, String(c.visits_est))))))
+      : null),
     el("div", { class: "layout-2col" }),
   ].filter(Boolean));
   const col = $(".layout-2col", view);

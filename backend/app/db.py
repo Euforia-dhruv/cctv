@@ -89,6 +89,7 @@ CREATE TABLE IF NOT EXISTS tracks (
   min_x REAL, min_y REAL, max_x REAL, max_y REAL,
   path_json TEXT, zone_ids_json TEXT,
   stationary_ratio REAL,
+  cell INTEGER,
   flagged INTEGER NOT NULL DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS events (
@@ -172,6 +173,9 @@ def init_db() -> None:
     cols = [r["name"] for r in conn.execute("PRAGMA table_info(analyses)").fetchall()]
     if "scene_json" not in cols:
         conn.execute("ALTER TABLE analyses ADD COLUMN scene_json TEXT")
+    tcols = [r["name"] for r in conn.execute("PRAGMA table_info(tracks)").fetchall()]
+    if "cell" not in tcols:
+        conn.execute("ALTER TABLE tracks ADD COLUMN cell INTEGER")
     conn.commit()
     conn.close()
 

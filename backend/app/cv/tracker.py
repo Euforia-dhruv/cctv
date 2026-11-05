@@ -15,10 +15,11 @@ from .detector import Det
 
 class Track:
     __slots__ = ("id", "bbox", "cx", "cy", "vx", "vy", "hits", "misses",
-                 "stationary", "path", "born_t", "last_t", "finalized")
+                 "stationary", "path", "born_t", "last_t", "finalized", "cell")
 
-    def __init__(self, tid: int, det: Det, t: float):
+    def __init__(self, tid: int, det: Det, t: float, cell: int | None = None):
         self.id = tid
+        self.cell = cell
         self.bbox = (det[0], det[1], det[2], det[3])
         self.cx, self.cy = (det[0] + det[2]) / 2, (det[1] + det[3]) / 2
         self.vx = self.vy = 0.0
@@ -67,15 +68,33 @@ class Tracker:
         self._next_id = 1
         self.finalized: List[Track] = []
         self._last_frame_speed = {}
+        self._last_t = 0.0
 
-    def update(self, dets: List[Det], t: float) -> List[Track]:
-        """Match detections to tracks; returns the live (unfinalized) tracks."""
+    def update(self, dets: List[Det], t: float, cell: int | None = None) -> List[Track]:
+        """Match detections to tracks; returns the live (unfinalized) tracks.
+
+        `cell` tags new tracks with a camera index; existing tracks keep theirs.
+        A camera wall is many independent scenes, so the pipeline calls this once
+        per frame with all cells' detections (use `update_multi`)."""
+        if cell is None:
+            return self.update_multi([(d, None) for d in dets], t)
+        return self.update_multi([(d, cell) for d in dets], t)
+
+    def update_multi(self, dets_by_cell: List[tuple], t: float) -> List[Track]:
+        """One tracking step for all cameras at once.
+
+        dets_by_cell: [(detection, cell_index), ...]. Association never crosses
+        cells, so two people in different cameras can never share an identity.
+        Missing a camera in a frame is normal (nobody there), so tracks expire
+        only via `max_lost` consecutive misses, counted once per frame."""
+        dets = [d for d, _ in dets_by_cell]
+        cells = [c for _, c in dets_by_cell]
         if self._tracks:
-            dt = max(t - self._tracks[0].last_t if self._tracks else 0.0, 0.001)
+            dt = max(t - self._last_t, 0.001)
         else:
             dt = 0.001
-        # Predict.
-        preds = [trk.predicted_box(dt) for trk in self._tracks]
+        # Predict, using each track's own time gap (it may have been missed).
+        preds = [trk.predicted_box(max(t - trk.last_t, 0.001)) for trk in self._tracks]
 
         # Greedy IoU matching.
         matched = [False] * len(dets)
@@ -89,6 +108,9 @@ class Tracker:
                 for j, trk in enumerate(self._tracks):
                     if used[j]:
                         continue
+                    # never associate across cameras: each tile is a separate scene
+                    if trk.cell != cells[i]:
+                        continue
                     s = iou(preds[j], (det[0], det[1], det[2], det[3]))
                     if s > best[0]:
                         best = (s, i, j)
@@ -101,11 +123,12 @@ class Tracker:
             trk = self._tracks[j]
             d = dets[i]
             prev_cx, prev_cy = trk.cx, trk.cy
+            trk_dt = max(t - trk.last_t, 0.001)
             trk.bbox = (d[0], d[1], d[2], d[3])
             trk.cx, trk.cy = (d[0] + d[2]) / 2, (d[1] + d[3]) / 2
-            trk.vx = (trk.cx - prev_cx) / dt
-            trk.vy = (trk.cy - prev_cy) / dt
-            speed = ((trk.vx ** 2 + trk.vy ** 2) ** 0.5) * dt
+            trk.vx = (trk.cx - prev_cx) / trk_dt
+            trk.vy = (trk.cy - prev_cy) / trk_dt
+            speed = ((trk.vx ** 2 + trk.vy ** 2) ** 0.5) * trk_dt
             trk.stationary += 1 if speed < self.stationary_px else 0
             trk.hits += 1
             trk.misses = 0
@@ -117,8 +140,10 @@ class Tracker:
         # New tracks for unmatched detections.
         for i, det in enumerate(dets):
             if not matched[i]:
-                self._tracks.append(Track(self._next_id, det, t))
+                self._tracks.append(Track(self._next_id, det, t, cells[i]))
                 self._next_id += 1
+
+        self._last_t = t
 
         # Expire lost tracks.
         alive = []
