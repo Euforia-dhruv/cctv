@@ -21,6 +21,20 @@ We prefer honest limits over implied capabilities.
 - Tiling costs roughly 4x a whole-frame pass. On this laptop a one-hour 640x360
   recording takes tens of minutes. Long recordings are the expensive case, not
   the model.
+- **Even with tiling, dense crowds are undercounted.** The tiled pass found 33
+  people in a frame where more were clearly present. Treat occupancy as a lower
+  bound and use it for relative comparison (busy vs quiet periods), not for
+  absolute headcount.
+
+## Object and debris events
+
+- "Unattended object" and "possible debris/spill" come from background
+  subtraction. It cannot separate a dropped bag from a passing crowd.
+- Measured on the one-hour crowded mall clip: **274 of 280 events were these two
+  types**, i.e. mostly false. They are now disabled for crowded stretches and
+  the analysis page says so. On a quiet scene they still run.
+- These events were always labelled experimental and for human review; they
+  should never be shown to an operator as findings on a busy floor.
 
 ## Camera walls (multi-camera mosaic footage)
 

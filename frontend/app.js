@@ -544,6 +544,13 @@ async function analysisView(view, id) {
           `so visit counts are per camera and never summed across them.` +
           (a.scene.sample_interval_s ? ` Sampled every ${a.scene.sample_interval_s}s.` : ""))
       : null),
+    (a.scene && a.scene.blob_events_suppressed
+      ? el("div", { class: "alert info", style: "margin-bottom:14px" },
+          `Object and debris detection was disabled for this clip: ` +
+          `${Math.round((a.scene.blob_events_suppressed.busy_frame_ratio || 0) * 100)}% of ` +
+          `frames were crowded, where background subtraction cannot tell a dropped ` +
+          `object from a passing crowd. Queue and occupancy results are unaffected.`)
+      : null),
     (a.scene && a.scene.track_quality && a.scene.track_quality.short_track_ratio > 0.35
       ? el("div", { class: "alert warn", style: "margin-bottom:14px" },
           `Data quality note: ${Math.round(a.scene.track_quality.short_track_ratio * 100)}% of ` +

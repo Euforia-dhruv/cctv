@@ -177,6 +177,17 @@ def run_pipeline(video_path: str, cfg: dict, artifacts_dir: Path,
 
     # Events from tracks + heuristics.
     events = alert_engine.events + alerts.analyze_tracks(tracks, zones, cfg)
+    busy = 0.0
+    if alert_engine.frames_seen:
+        busy = alert_engine.crowd_frames / alert_engine.frames_seen
+    if busy > 0.5:
+        res.scene["blob_events_suppressed"] = {
+            "busy_frame_ratio": round(busy, 2),
+            "note": ("Object/debris detection was disabled for most of this clip "
+                     "because the scene is crowded. Background subtraction cannot "
+                     "tell a dropped object from a crowd, and it produced mostly "
+                     "false events on busy footage."),
+        }
     if grid is not None:
         # A camera wall is many independent scenes: cluster queues per camera so
         # people in unrelated cameras are never treated as one queue.
