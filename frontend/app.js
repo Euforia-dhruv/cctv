@@ -526,7 +526,7 @@ async function analysisView(view, id) {
   const data = await api(`/analyses/${id}`);
   view.innerHTML = "";
   const a = data.analysis, v = data.video, events = data.events;
-  view.append(
+  view.append(...[
     el("h1", { style: "margin:0 0 4px;font-size:20px" }, `Analysis #${a.id}`),
     el("div", { class: "hint", style: "margin-bottom:16px" },
       `${esc(v.filename)} · ${esc(v.store_name)} · model ${esc(a.model_id)} on ${esc(a.inference_device)} · ${a.processed_frames} frames sampled · ${a.inference_ms_avg} ms/frame`),
@@ -542,7 +542,7 @@ async function analysisView(view, id) {
       stateBox("Avg dwell", fmtDur(a.dwell_avg_s), "per observed person"),
       stateBox("Dwell median", fmtDur(a.dwell_p50_s), "per observed person")),
     el("div", { class: "layout-2col" }),
-  );
+  ].filter(Boolean));
   const col = $(".layout-2col", view);
 
   // Left column
